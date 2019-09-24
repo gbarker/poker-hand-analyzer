@@ -41,8 +41,8 @@ straightCardValueSums = [wheelCardValueSum, 31, 62, 124, 248, 496, 992, 1984, 39
 handIdentification :: [(Int, Int)] -> (String, Integer)
 handIdentification cards@[a,b,c,d,e] 
     | isAFlush == True && isAStraight == True = (straightFlush, straightFlushValue + getStraightKickerValue cards sumOfCardValues)
-    | isQuads cards == True = (fourOfAKind, fourOfAKindValue + 0)
-    | hasSet cards == True && hasExactlyOnePair cards == True = (fullHouse, fullHouseValue + 0)
+    | isQuads rankCounts == True = (fourOfAKind, getQuadValue rankCounts)
+    | hasSet cards == True && hasExactlyOnePair cards == True = (fullHouse, getBoatValue cards)
     | isAFlush == True = (flush, flushValue + sumOfCardValues)
     | isAStraight == True = (straight, straightValue + getStraightKickerValue cards sumOfCardValues)
     | hasSet cards == True = (threeOfAKind, 0)
@@ -52,12 +52,12 @@ handIdentification cards@[a,b,c,d,e]
     where   sumOfCardValues= sumCardValues(cards)
             isAFlush = isFlush cards
             isAStraight = isStraight sumOfCardValues
+            rankCounts = groupByRank cards
 
 -- Error: wrong number of cards
-handIdentification (x:xs) = ("There are five cards in a poker hand...you have supplied " ++ show (length (x:xs)), 0)
+handIdentification (x:xs) = ("There are five cards in a poker hand...received " ++ show (length (x:xs)), 0)
 
 -- Hand Identification supporting functions:
-
 isFlush :: [(Int, Int)] -> Bool
 isFlush (x:[]) = True
 isFlush ((_, s):xs) = if s == head [suit | (rank, suit) <- xs] then isFlush xs else False
@@ -66,13 +66,38 @@ isStraight :: Integer -> Bool
 isStraight sumOfCardValues = elem sumOfCardValues straightCardValueSums
 
 getStraightKickerValue :: [(Int, Int)] -> Integer -> Integer
-getStraightKickerValue cards sumOfCardValues = fromIntegral (if sumOfCardValues == wheelCardValueSum then 5 else maximum (getRanks cards))
+getStraightKickerValue cards sumOfCardValues = fromIntegral (if sumOfCardValues == wheelCardValueSum then 3 else maximum (getRanks cards))
 
--- todo: this can be optimized...right now it's scanning all 5 cards one per card...some kind of running count that stops when we hit four for a single rank?
+groupByRank :: [(Int, Int)] -> [(Int, Int)]
+groupByRank cards = distinct [(r1, length [r | (r, _) <- cards, r == r1]) | (r1, _) <- cards]
+
+-- https://stackoverflow.com/a/53823891/61563 (renamed from unique to distinct)
+distinct :: Eq a => [a] -> [a]
+distinct [] = []
+distinct (x:xs) = x:distinct (filter ((/=) x) xs)
+
 isQuads :: [(Int, Int)] -> Bool
-isQuads cards = length [r | (r, _) <- cards, countCardsWithRank cards r == 4] == 4
+isQuads rankCounts = if length rankCounts == 2 then (snd (head rankCounts)) `elem` [1, 4] else False
+--isQuads cards@((firstRank, _):(secondRank, _):xs) = if countCardsWithRank cards firstRank == 4 || countCardsWithRank cards secondRank == 4 then True else False
 
+getQuadValue :: [(Int, Int)] -> Integer
+getQuadValue rankCounts = fourOfAKindValue + getPairedRankValue quadRank + getRankValue kickerRank
+    where   quadRank = head [r | (r, c) <- rankCounts, c == 4]
+            kickerRank = head [r | (r, c) <- rankCounts, c == 1]
 
+--getQuadValue cards@((firstRank, _):xs) = fourOfAKindValue + getPairedRankValue quadRank + getRankValue kickerRank
+--    where   countOfFirstRank = countCardsWithRank cards firstRank
+--            secondRank = head [x | (x, _) <- cards, x /= firstRank]
+--            quadRank = if countOfFirstRank == 4 then firstRank else secondRank
+--            kickerRank = if countOfFirstRank == 4 then secondRank else firstRank
+
+getBoatValue :: [(Int, Int)] -> Integer
+getBoatValue cards@((firstRank, _):xs) = fullHouseValue + getPairedRankValue boatRank + getRankValue kickerRank
+    where   countOfFirstRank = countCardsWithRank cards firstRank
+            secondRank = head [x | (x, _) <- cards, x /= firstRank]
+            boatRank = if countOfFirstRank == 3 then firstRank else secondRank
+            kickerRank = if countOfFirstRank == 3 then secondRank else firstRank
+            
             
 countUniqueSuits :: [(Int, Int)] -> Int
 countUniqueSuits [] = 0
@@ -84,11 +109,6 @@ countUniqueRanks ((r, s):xs) = (if elem r (getRanks xs) then 0 else 1) + countUn
 
 countCardsWithRank :: [(Int, Int)] -> Int -> Int
 countCardsWithRank cards rank = length [(r, s) | (r, s) <- cards, r == rank]
-
-getQuadAndKickerRank :: [(Int, Int)] -> (Int, Int)
-getQuadAndKickerRank cards@((firstRank, _):xs) = if countOfFirstRank == 4 then (firstRank, secondRank) else (secondRank, firstRank)
-    where   countOfFirstRank = countCardsWithRank cards firstRank
-            secondRank = head [x | (x, _) <- cards, x /= firstRank]
 
 getBoatAndKickerRank :: [(Int, Int)] -> (Int, Int)
 getBoatAndKickerRank cards@((firstRank, _):xs) = if countOfFirstRank == 3 then (firstRank, secondRank) else (secondRank, firstRank)
@@ -143,13 +163,16 @@ getCardRankValue (rankToMatch, _) = getRankValue rankToMatch
 getRankValue :: Int -> Integer
 getRankValue rankToMatch = head [x | (r, x) <- cardRankValueMap, r == rankToMatch]
 
+getPairedRankValue :: Int -> Integer
+getPairedRankValue rankToMatch = head [x | (r, x) <- pairedCardRankValueMap, r == rankToMatch]
+
 --getHandTypeValue :: String -> Integer
 --getHandTypeValue typeToMatch = head [x | (t, x <- handTypeValueMap, t == typeToMatch)]
 
 -- Hand Identification Tests:
-testStraightFlush = handIdentification [(5, 2), (6, 2), (7, 2), (8, 2), (9, 2)] == ("Straight Flush",  8589934592 + 512) && handIdentification [(3, 3), (1, 3), (2, 3), (12, 3), (0, 3)] == ("Straight Flush",  8589934592 + 8)
-testQuads = handIdentification [(0, 1), (0, 2), (0, 3), (0, 4), (1, 1)] == ("Quads", 101)
-testBoat = handIdentification [(0, 1), (0, 2), (0, 3), (1, 1), (1, 2)] == ("Boat", 101)
+testStraightFlush = handIdentification [(5, 2), (6, 2), (7, 2), (8, 2), (9, 2)] == ("Straight Flush",  8589934592 + 9) && handIdentification [(3, 3), (1, 3), (2, 3), (12, 3), (0, 3)] == ("Straight Flush",  8589934592 + 3)
+testQuads = handIdentification [(0, 1), (0, 2), (0, 3), (0, 4), (1, 1)] == ("Four of a Kind", 4294967296 +  8192 + 2)
+testBoat = handIdentification [(0, 1), (0, 2), (0, 3), (1, 1), (1, 2)] == ("Full House", 101)
 testFlush = handIdentification [(5, 1), (1, 1), (9, 1), (12, 1), (7, 1)] == ("Flush", 1001010100010)
 testStraight = handIdentification [(5, 0), (6, 1), (7, 2), (8, 2), (9, 2)] == ("Straight", 9)
 testTrips = handIdentification [(5, 0), (5, 1), (5, 2), (8, 2), (9, 2)] == ("Trips", 60001100000000)
