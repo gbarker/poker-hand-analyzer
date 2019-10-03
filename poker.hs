@@ -1,3 +1,12 @@
+-- module PokerHandAnalyzer (
+--     deck    
+--     , handIdentification
+--     , fromCardString
+--     , fromCardStrings
+-- ) where
+
+import Data.List
+
 -- Simple deck of cards
 ranks = [0..12]
 suits = [0..3]
@@ -41,15 +50,15 @@ straightCardValueSums = [wheelCardValueSum, 31, 62, 124, 248, 496, 992, 1984, 39
 handIdentification :: [(Int, Int)] -> (String, Int)
 handIdentification cards@[a,b,c,d,e] 
     | isAFlush == True && isAStraight == True = (straightFlush, straightFlushValue + getStraightKickerValue cards sumOfCardValues)
-    | isQuads rankCounts == True = (fourOfAKind, getQuadValue rankCounts)
-    | isBoat rankCounts == True = (fullHouse, getBoatValue rankCounts)
+    | isFourOfAKind rankCounts == True = (fourOfAKind, getFourOfAKindValue rankCounts)
+    | isFullHouse rankCounts == True = (fullHouse, getFullHouseValue rankCounts)
     | isAFlush == True = (flush, flushValue + sumOfCardValues)
     | isAStraight == True = (straight, straightValue + getStraightKickerValue cards sumOfCardValues)
-    | isSet rankCounts == True = (threeOfAKind, getSetValue rankCounts)
+    | isThreeOfAKind rankCounts == True = (threeOfAKind, getSetValue rankCounts)
     | isTwoPair rankCounts == True = (twoPair, getTwoPairValue rankCounts)
     | isOnePair rankCounts == True = (onePair, getOnePairValue rankCounts)
     | otherwise = (highCard, highCardValue + sumOfCardValues)
-    where   sumOfCardValues= sumCardValues(cards)
+    where   sumOfCardValues = sumCardValues(cards)
             isAFlush = isFlush cards
             isAStraight = isStraight sumOfCardValues
             rankCounts = groupByRank cards
@@ -59,41 +68,36 @@ handIdentification (x:xs) = ("There are five cards in a poker hand...received " 
 
 -- Hand Identification supporting functions:
 isFlush :: [(Int, Int)] -> Bool
-isFlush (x:[]) = True
-isFlush ((_, s):xs) = if s == head [suit | (rank, suit) <- xs] then isFlush xs else False
+isFlush cards = all (== (head suits)) suits
+    where suits = [s | (_, s) <- cards]
 
 isStraight :: Int -> Bool
 isStraight sumOfCardValues = elem sumOfCardValues straightCardValueSums
 
 getStraightKickerValue :: [(Int, Int)] -> Int -> Int
-getStraightKickerValue cards sumOfCardValues = fromIntegral (if sumOfCardValues == wheelCardValueSum then wheelCardKickerValue else getRankValue (maximum (getRanks cards)))
+getStraightKickerValue cards sumOfCardValues = if sumOfCardValues == wheelCardValueSum then wheelCardKickerValue else getRankValue (maximum (getRanks cards))
 
 groupByRank :: [(Int, Int)] -> [(Int, Int)]
-groupByRank cards = distinct [(r1, length [r | (r, _) <- cards, r == r1]) | (r1, _) <- cards]
+groupByRank cards = nub [(r1, length [r | (r, _) <- cards, r == r1]) | (r1, _) <- cards]
 
--- https://stackoverflow.com/a/53823891/61563 (renamed from unique to distinct)
-distinct :: Eq a => [a] -> [a]
-distinct [] = []
-distinct (x:xs) = x:distinct (filter ((/=) x) xs)
+isFourOfAKind :: [(Int, Int)] -> Bool
+isFourOfAKind rankCounts = if length rankCounts == 2 then (snd (head rankCounts)) `elem` [1, 4] else False
 
-isQuads :: [(Int, Int)] -> Bool
-isQuads rankCounts = if length rankCounts == 2 then (snd (head rankCounts)) `elem` [1, 4] else False
-
-getQuadValue :: [(Int, Int)] -> Int
-getQuadValue rankCounts = fourOfAKindValue + getPairedRankValue quadRank + getRankValue kickerRank
+getFourOfAKindValue :: [(Int, Int)] -> Int
+getFourOfAKindValue rankCounts = fourOfAKindValue + getPairedRankValue quadRank + getRankValue kickerRank
     where   quadRank = head [r | (r, c) <- rankCounts, c == 4]
             kickerRank = head [r | (r, c) <- rankCounts, c == 1]
 
-isBoat :: [(Int, Int)] -> Bool
-isBoat rankCounts = if length [c | (_, c) <- rankCounts, c == 3] == 1 && length [c | (_, c) <- rankCounts, c == 2] == 1 then True else False
+isFullHouse :: [(Int, Int)] -> Bool
+isFullHouse rankCounts = if length [c | (_, c) <- rankCounts, c == 3] == 1 && length [c | (_, c) <- rankCounts, c == 2] == 1 then True else False
                         
-getBoatValue :: [(Int, Int)] -> Int
-getBoatValue rankCounts = fullHouseValue + getPairedRankValue setRank + getRankValue kickerRank
+getFullHouseValue :: [(Int, Int)] -> Int
+getFullHouseValue rankCounts = fullHouseValue + getPairedRankValue setRank + getRankValue kickerRank
     where   setRank = head [r | (r, c) <- rankCounts, c == 3]
             kickerRank = head [r | (r, c) <- rankCounts, c == 2]
 
-isSet :: [(Int, Int)] -> Bool
-isSet rankCounts = if length [c | (_, c) <- rankCounts, c == 3] == 1 && length [c | (_, c) <- rankCounts, c == 1] == 2 then True else False
+isThreeOfAKind :: [(Int, Int)] -> Bool
+isThreeOfAKind rankCounts = if length [c | (_, c) <- rankCounts, c == 3] == 1 && length [c | (_, c) <- rankCounts, c == 1] == 2 then True else False
 
 getSetValue :: [(Int, Int)] -> Int
 getSetValue rankCounts = threeOfAKindValue + getPairedRankValue setRank + valueOfKickers
@@ -117,12 +121,9 @@ getOnePairValue rankCounts = onePairValue + getPairedRankValue pairRank + valueO
             valueOfKickers = sum [getRankValue r | (r, c) <- rankCounts, c == 1]
                                                                         
 sumCardValues :: [(Int, Int)] -> Int
-sumCardValues cards = sum [getCardRankValue(card) | card <- cards]
+sumCardValues cards = sum (map (\(r, _) -> getRankValue r) cards)
 
 getRanks cards = [r | (r, s) <- cards]
-
-getCardRankValue :: (Int, Int) -> Int
-getCardRankValue (rankToMatch, _) = getRankValue rankToMatch
 
 getRankValue :: Int -> Int
 getRankValue rankToMatch = head [x | (r, x) <- cardRankValueMap, r == rankToMatch]
